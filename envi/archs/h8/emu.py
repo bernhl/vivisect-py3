@@ -6,7 +6,6 @@ import sys
 import struct
 import logging
 
-from . import emu
 import envi
 import envi.bits as e_bits
 from envi.archs.h8 import H8Module

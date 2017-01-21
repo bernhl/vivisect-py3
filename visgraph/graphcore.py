@@ -13,7 +13,7 @@ from .exc import *
 import visgraph.pathcore as vg_pathcore
 
 def guid(size=16):
-    return hexlify(os.urandom(size))
+    return hexlify(os.urandom(size)).decode('ascii')
 
 def zdict():
     return collections.defaultdict(int)

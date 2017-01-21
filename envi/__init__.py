@@ -6,6 +6,8 @@ ArchitectureModule, Opcode, Operand, and Emulator objects.
 import types
 import struct
 import platform
+import binascii
+
 
 # TODO: move into const.py
 # Parsed Opcode Formats
@@ -23,7 +25,7 @@ arch_names = {
     ARCH_DEFAULT:   'default',
     ARCH_I386:      'i386',
     ARCH_AMD64:     'amd64',
-    ARCH_ARMV7:      'arm',
+    ARCH_ARMV7:     'arm',
     ARCH_THUMB16:   'thumb16',
     ARCH_THUMB:     'thumb2',
     ARCH_MSP430:    'msp430',
@@ -212,7 +214,8 @@ class InvalidInstruction(EnviException):
             msg = [mesg]
 
         if bytez is not None:
-            msg.append("'" + bytez.hex() + "'")
+            bytez = binascii.hexlify(bytez).decode('ascii')
+            msg.append("'" + bytez + "'")
 
         if va != 0:
             msg.append('at ' + hex(va))

@@ -158,9 +158,9 @@ class VS_VERSIONINFO:
     A simple (read-only) VS_VERSIONINFO parser
     """
 
-    def __init__(self, bytes):
+    def __init__(self, bytez):
         self._version_info = {}
-        self._parseBytes(bytes)
+        self._parseBytes(bytez)
 
     def getVersionValue(self, key, default=None):
         """
@@ -187,34 +187,34 @@ class VS_VERSIONINFO:
         """
         return list(self._version_info.items())
 
-    def _parseBytes(self, bytes):
+    def _parseBytes(self, bytez):
         offset = 0
-        mysize, valsize, vstype = struct.unpack('<HHH', bytes[:6])
+        mysize, valsize, vstype = struct.unpack('<HHH', bytez[:6])
         offset += 6
-        offset, vinfosig = self._eatStringAndAlign(bytes, offset)
+        offset, vinfosig = self._eatStringAndAlign(bytez, offset)
         if vinfosig != 'VS_VERSION_INFO':
             Exception('Invalid VS_VERSION_INFO signature!: %s' % repr(vinfosig))
 
         if valsize and valsize >= len(vs_pe.VS_FIXEDFILEINFO()):
             ffinfo = vs_pe.VS_FIXEDFILEINFO()
-            ffinfo.vsParse(bytes[offset:offset + valsize])
+            ffinfo.vsParse(bytez[offset:offset + valsize])
 
         offset += valsize
         offmod = offset % 4
         if offmod:
             offset += (4 - offmod)
 
-        xmax = min(mysize, len(bytes))
+        xmax = min(mysize, len(bytez))
         i = 0
         while offset < xmax and i < 2:
-            offset = self._stringFileInfo(bytes, offset)
+            offset = self._stringFileInfo(bytez, offset)
             i += 1
 
-    def _eatStringAndAlign(self, bytes, offset):
-        ret = ''
-        blen = len(bytes)
-        while bytes[offset:offset + 2] != '\x00\x00':
-            ret += bytes[offset:offset + 2]
+    def _eatStringAndAlign(self, bytez, offset):
+        ret = b''
+        blen = len(bytez)
+        while bytez[offset:offset + 2] != b'\x00\x00':
+            ret += bytez[offset:offset + 2]
             offset += 2
             if offset >= blen:
                 break
@@ -225,11 +225,11 @@ class VS_VERSIONINFO:
             offset += (4 - offmod)
         return offset, ret.decode('utf-16le')
 
-    def _stringFileInfo(self, bytes, offset):
+    def _stringFileInfo(self, bytez, offset):
         xoffset = offset
-        mysize, valsize, valtype = struct.unpack('<HHH', bytes[xoffset:xoffset + 6])
+        mysize, valsize, valtype = struct.unpack('<HHH', bytez[xoffset:xoffset + 6])
         xoffset += 6
-        xoffset, sigstr = self._eatStringAndAlign(bytes, xoffset)
+        xoffset, sigstr = self._eatStringAndAlign(bytez, xoffset)
         # if sigstr not in ('VarFileInfo','StringFileInfo'):
         # raise Exception('Invalid StringFileInfo Key!: %s' % repr(sigstr))
 
@@ -237,11 +237,11 @@ class VS_VERSIONINFO:
 
         if sigstr == 'StringFileInfo':
             while xoffset < xmax:
-                xoffset = self._stringTable(bytes, xoffset, mysize - (xoffset - offset))
+                xoffset = self._stringTable(bytez, xoffset, mysize - (xoffset - offset))
 
         elif sigstr == 'VarFileInfo':
             while xoffset < xmax:
-                xoffset = self._varTable(bytes, xoffset, mysize - (xoffset - offset))
+                xoffset = self._varTable(bytez, xoffset, mysize - (xoffset - offset))
 
         xmod = xoffset % 4
         if xmod:
@@ -249,27 +249,27 @@ class VS_VERSIONINFO:
 
         return xoffset
 
-    def _varTable(self, bytes, offset, size):
+    def _varTable(self, bytez, offset, size):
         xmax = offset + size
         xoffset = offset
-        mysize, valsize, valtype = struct.unpack('<HHH', bytes[xoffset:xoffset + 6])
+        mysize, valsize, valtype = struct.unpack('<HHH', bytez[xoffset:xoffset + 6])
         xoffset += 6
-        xoffset, varname = self._eatStringAndAlign(bytes, xoffset)
-        if xoffset + 4 > len(bytes):
+        xoffset, varname = self._eatStringAndAlign(bytez, xoffset)
+        if xoffset + 4 > len(bytez):
             return offset + size
-        varval = struct.unpack('<I', bytes[xoffset:xoffset + 4])[0]
+        varval = struct.unpack('<I', bytez[xoffset:xoffset + 4])[0]
         xoffset += 4
         self._version_info[varname] = varval
         return offset + size
 
-    def _stringTable(self, bytes, offset, size):
+    def _stringTable(self, bytez, offset, size):
         xmax = offset + size
         xoffset = offset
-        mysize, valsize, valtype = struct.unpack('<HHH', bytes[offset:offset + 6])
+        mysize, valsize, valtype = struct.unpack('<HHH', bytez[offset:offset + 6])
         xoffset += 6
-        xoffset, hexcpage = self._eatStringAndAlign(bytes, xoffset)
+        xoffset, hexcpage = self._eatStringAndAlign(bytez, xoffset)
         while xoffset < xmax:
-            xoffset = self._stringData(bytes, xoffset)
+            xoffset = self._stringData(bytez, xoffset)
             if xoffset == -1:
                 break
 
@@ -278,22 +278,22 @@ class VS_VERSIONINFO:
                 xoffset += (4 - xmod)
         return offset + size
 
-    def _stringData(self, bytes, offset):
+    def _stringData(self, bytez, offset):
         """
         Parse out a "String" structure...
         """
         xoffset = offset
-        mysize, valsize, stype = struct.unpack('<HHH', bytes[offset:offset + 6])
+        mysize, valsize, stype = struct.unpack('<HHH', bytez[offset:offset + 6])
 
         if mysize == 0:
             return -1
 
         xoffset += 6
-        xoffset, strkey = self._eatStringAndAlign(bytes, xoffset)
+        xoffset, strkey = self._eatStringAndAlign(bytez, xoffset)
 
         # valsize is in words...
         valsize *= 2
-        value = bytes[xoffset: xoffset + valsize]
+        value = bytez[xoffset: xoffset + valsize]
 
         # Do utf16le decode if we're "textual data"
         if stype == 1:
@@ -411,7 +411,7 @@ class PE(object):
         """
         if self.IMAGE_EXPORT_DIRECTORY is not None:
             rawname = self.readAtRva(self.IMAGE_EXPORT_DIRECTORY.Name, 32)
-            return rawname.split('\x00')[0]
+            return rawname.split(b'\x00')[0]
         return None
 
     def getImports(self):
@@ -470,11 +470,11 @@ class PE(object):
         slen = len(s)
         if check and not self.checkRva(rva, size=slen):
             return None
-        bytes = self.readAtRva(rva, len(s))
-        if not bytes:
+        bytez = self.readAtRva(rva, len(s))
+        if not bytez:
             return None
 
-        s.vsParse(bytes)
+        s.vsParse(bytez)
         return s
 
     def readStructAtOffset(self, offset, structname):
@@ -773,11 +773,11 @@ class PE(object):
                     diff = self.getMaxRva() - ibn_rva - 2
                     ibn = vstruct.getStructure("pe.IMAGE_IMPORT_BY_NAME")
                     ibn.vsGetField('Name').vsSetLength(min(diff, 128))
-                    bytes = self.readAtRva(ibn_rva, len(ibn), shortok=True)
-                    if not bytes:
+                    bytez = self.readAtRva(ibn_rva, len(ibn), shortok=True)
+                    if not bytez:
                         break
                     try:
-                        ibn.vsParse(bytes)
+                        ibn.vsParse(bytez)
                     except:
                         idx += 1
                         continue
@@ -915,13 +915,13 @@ class PE(object):
                 name = None
 
                 if nameoff != 0:
-                    name = self.readAtOffset(nameoff, 256, shortok=True).split("\x00", 1)[0]
+                    name = self.readAtOffset(nameoff, 256, shortok=True).split(b"\x00", 1)[0]
                 else:
                     name = "ord_%.4x" % ord
 
                 # RP BUG FIX - Export forwarding range check is done using RVA's
                 if edir.VirtualAddress <= funcoff < edir.VirtualAddress + edir.Size:
-                    fwdname = self.readAtRva(funcoff, 260, shortok=True).split("\x00", 1)[0]
+                    fwdname = self.readAtRva(funcoff, 260, shortok=True).split(b"\x00", 1)[0]
                     self.forwarders.append((funclist[ord], name, fwdname))
                 else:
                     self.exports.append((funclist[ord], ord, name))
@@ -1117,9 +1117,9 @@ class MemObjFile:
         self.offset += size
         return ret
 
-    def write(self, bytes):
-        self.memobj.writeMemory(self.offset, bytes)
-        self.offset += len(bytes)
+    def write(self, bytez):
+        self.memobj.writeMemory(self.offset, bytez)
+        self.offset += len(bytez)
 
 
 def peFromMemoryObject(memobj, baseaddr):
