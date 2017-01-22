@@ -24,10 +24,10 @@ class i386Module(envi.ArchitectureModule):
         return i386RegisterContext()
 
     def archGetBreakInstr(self):
-        return '\xcc'
+        return b'\xcc'
 
     def archGetNopInstr(self):
-        return '\x90'
+        return b'\x90'
 
     def archGetRegisterGroups(self):
         groups = envi.ArchitectureModule.archGetRegisterGroups(self)
@@ -43,8 +43,8 @@ class i386Module(envi.ArchitectureModule):
     def pointerString(self, va):
         return '0x%.8x' % va
 
-    def archParseOpcode(self, bytes, offset=0, va=0):
-        return self._arch_dis.disasm(bytes, offset, va)
+    def archParseOpcode(self, bytez, offset=0, va=0):
+        return self._arch_dis.disasm(bytez, offset, va)
 
     def getEmulator(self):
         return IntelEmulator()
