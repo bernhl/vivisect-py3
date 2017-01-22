@@ -8,9 +8,10 @@ from . import opcode64 as opcode86
 
 all_tables = opcode86.tables86
 
-from envi.archs.i386.disasm import iflag_lookup, operand_range, priv_lookup, \
+from envi.archs.i386.disasm import iflag_lookup, priv_lookup, \
     i386Opcode, i386ImmOper, i386RegOper, i386ImmMemOper, i386RegMemOper, \
     i386SibOper
+    #operand_range
 from envi.archs.amd64.regs import *
 
 # Pre generate these for fast lookup. Because our REX prefixes have the same relative
@@ -173,9 +174,9 @@ class Amd64Disasm(e_i386.i386Disasm):
         self.ptrsize = 8
 
         # 64-bit only
-        self._dis_amethods[opcode86.ADDRMETH_B >> 16] = self.ameth_b
-        self._dis_amethods[opcode86.ADDRMETH_H >> 16] = self.ameth_h
-        self._dis_amethods[opcode86.ADDRMETH_L >> 16] = self.ameth_l
+        #self._dis_amethods[opcode86.ADDRMETH_B >> 16] = self.ameth_b
+        #self._dis_amethods[opcode86.ADDRMETH_H >> 16] = self.ameth_h
+        #self._dis_amethods[opcode86.ADDRMETH_L >> 16] = self.ameth_l
 
         # Over-ride these which are in use by the i386 version of the ASM
         self.ROFFSETMMX   = e_i386.getRegOffset(amd64regs, "mm0")
