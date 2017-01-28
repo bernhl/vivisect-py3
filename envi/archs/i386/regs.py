@@ -40,7 +40,7 @@ i386regs = [
 def getRegOffset(regs, regname):
     # NOTE: dynamically calculate this on import so we are less
     # likely to fuck it up...
-    for i,(name,width) in enumerate(regs):
+    for i, (name, width) in enumerate(regs):
         if name == regname:
             return i
     raise Exception("getRegOffset doesn't know about: %s" % regname)

@@ -2,6 +2,7 @@
 The guts for the i386 envi opcode disassembler.
 """
 
+import re
 import struct
 
 import envi
@@ -12,7 +13,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 from . import opcode86
 
 # Grab our register enums etc...
-from envi.archs.i386.regs import *
+import envi.archs.i386.regs
 
 # Our instruction prefix masks
 # NOTE: table 3-4 (section 3.6) of intel 1 shows how REX/OP_SIZE
@@ -40,20 +41,6 @@ RMETA_LOW8  = 0x00080000
 RMETA_HIGH8 = 0x08080000
 RMETA_LOW16 = 0x00100000
 RMETA_LOW128= 0x00800000
-
-# Use a list here instead of a dict for speed (max 255 anyway)
-i386_prefixes = [None for i in range(256)]
-i386_prefixes[0xF0] = PREFIX_LOCK
-i386_prefixes[0xF2] = PREFIX_REPNZ
-i386_prefixes[0xF3] = PREFIX_REP
-i386_prefixes[0x2E] = PREFIX_CS
-i386_prefixes[0x36] = PREFIX_SS
-i386_prefixes[0x3E] = PREFIX_DS
-i386_prefixes[0x26] = PREFIX_ES
-i386_prefixes[0x64] = PREFIX_FS
-i386_prefixes[0x65] = PREFIX_GS
-i386_prefixes[0x66] = PREFIX_OP_SIZE
-i386_prefixes[0x67] = PREFIX_ADDR_SIZE
 
 MODE_16 = 0
 MODE_32 = 1
@@ -254,6 +241,58 @@ class i386PcRelOper(envi.Operand):
         if other.tsize != self.tsize:
             return False
         return True
+
+
+class Amd64RipRelOper(envi.DerefOper):
+    def __init__(self, imm, tsize):
+        self.imm = imm
+        self.tsize = tsize
+        self._is_deref = True
+
+    def getOperValue(self, op, emu=None):
+        if not self._is_deref:  # Special lea behavior
+            return self.getOperAddr(op)
+        if emu is None:
+            return None
+        return emu.readMemValue(self.getOperAddr(op, emu), self.tsize)
+
+    def setOperValue(self, op, emu, val):
+        emu.writeMemValue(self.getOperAddr(op, emu), val, self.tsize)
+
+    def getOperAddr(self, op, emu=None):
+        return op.va + op.size + self.imm
+
+    def isDeref(self):
+        # The disassembler may reach in and set this (if lea...)
+        return self._is_deref
+
+    def isDiscrete(self):
+        return True
+
+    def render(self, mcanv, op, idx):
+        destva = op.va + op.size + self.imm
+        sym = mcanv.syms.getSymByAddr(destva)
+
+        mcanv.addNameText(e_i386.sizenames[self.tsize])
+        mcanv.addText(" [")
+        mcanv.addNameText("rip", typename="registers")
+
+        if self.imm > 0:
+            mcanv.addText(" + ")
+            if sym is not None:
+                mcanv.addVaText("$%s" % repr(sym), destva)
+            else:
+                mcanv.addNameText(str(self.imm))
+        elif self.imm < 0:
+            mcanv.addText(" - ")
+            if sym is not None:
+                mcanv.addVaText("$%s" % repr(sym), destva)
+            else:
+                mcanv.addNameText(str(abs(self.imm)))
+        mcanv.addText("]")
+
+    def repr(self, op):
+        return "[rip + %d]" % self.imm
 
 
 class i386RegMemOper(envi.DerefOper):
@@ -633,21 +672,13 @@ class i386Disasm:
     def __init__(self, mode=MODE_32):
         self._md = Cs(CS_ARCH_X86, CS_MODE_32)
         self._md.detail = True
+        self._reg_lookup = envi.archs.i386.regs
 
         self._dis_mode = MODE_32
-        self._dis_prefixes = i386_prefixes
-        self._dis_regctx = i386RegisterContext()
+        self._dis_regctx = envi.archs.i386.regs.i386RegisterContext()
         self._dis_oparch = envi.ARCH_I386
         self.ptrsize = 4
 
-        # Offsets used to add in addressing method parsers
-        self.ROFFSETMMX   = getRegOffset(i386regs, "mm0")
-        self.ROFFSETSIMD  = getRegOffset(i386regs, "xmm0")
-        self.ROFFSETDEBUG = getRegOffset(i386regs, "debug0")
-        self.ROFFSETCTRL  = getRegOffset(i386regs, "ctrl0")
-        self.ROFFSETTEST  = getRegOffset(i386regs, "test0")
-        self.ROFFSETSEG   = getRegOffset(i386regs, "es")
-        self.ROFFSETFPU   = getRegOffset(i386regs, "st0")
 
     def disasm(self, bytez, offset, va):
 
@@ -695,8 +726,11 @@ class i386Disasm:
             tsize = md_oper.size
 
             if md_oper.type == capstone.x86.X86_OP_REG:
-                reg_name = md_insn.reg_name(md_oper.reg)
-                reg = globals()['REG_{}'.format(reg_name.upper())]
+                reg_name = md_insn.reg_name(md_oper.reg).upper()
+                # capstone names them r10b but vivisect names them r10l
+                if re.match('R[0-9]+B', reg_name):
+                    reg_name = reg_name[:-1] + 'L'
+                reg = getattr(self._reg_lookup, 'REG_%s' % reg_name)
                 vw_oper = i386RegOper(reg, tsize)
 
             elif md_oper.type == capstone.x86.X86_OP_IMM:
@@ -706,8 +740,8 @@ class i386Disasm:
                 disp = md_oper.mem.disp
                 base = md_oper.mem.base
                 if base != 0:
-                    base_reg_name = md_insn.reg_name(base)
-                    base_reg = globals()['REG_{}'.format(base_reg_name.upper())]
+                    base_reg_name = md_insn.reg_name(base).upper()
+                    base_reg = getattr(self._reg_lookup, 'REG_%s' % base_reg_name)
                 else:
                     base_reg = None
 
@@ -718,8 +752,8 @@ class i386Disasm:
                         index_reg = None
                         imm = None
                     else:
-                        index_reg_name = md_insn.reg_name(index)
-                        index_reg = globals()['REG_{}'.format(index_reg_name.upper())]
+                        index_reg_name = md_insn.reg_name(index).upper()
+                        index_reg = getattr(self._reg_lookup, 'REG_%s' % index_reg_name)
                         imm = disp
                         disp = 0
 
@@ -728,7 +762,10 @@ class i386Disasm:
                     vw_oper = i386SibOper(tsize, reg=base_reg, index=index_reg, scale=scale, disp=disp, imm=imm)
 
                 elif base != 0:
-                    vw_oper = i386RegMemOper(base_reg, tsize, disp=disp)
+                    if base_reg_name == 'RIP':
+                        vw_oper = Amd64RipRelOper(disp, tsize)
+                    else:
+                        vw_oper = i386RegMemOper(base_reg, tsize, disp=disp)
 
                 else:
                     vw_oper = i386ImmMemOper(disp, tsize)
@@ -761,5 +798,4 @@ class i386Disasm:
 
 if __name__ == '__main__':
     import envi.archs
-
     envi.archs.dismain(i386Disasm())
